@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>SUMEX SCM | 재고·출고 조회</title>
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--line:#e3e8ef;--ink:#1d2433;--sub:#667085;--pri:#1f4e9c;--pri2:#e8effa;--red:#c0362c;--org:#c97a00;--grn:#1b7f4b}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+header{background:#0f2a55;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;letter-spacing:.3px}header .meta{font-size:12px;opacity:.8;margin-left:auto}
+nav{display:flex;gap:4px;padding:10px 20px 0;background:#0f2a55;flex-wrap:wrap}
+nav button{border:0;background:transparent;color:#c9d6ee;padding:10px 14px;font-size:14px;cursor:pointer;border-radius:8px 8px 0 0}
+nav button.on{background:var(--bg);color:var(--ink);font-weight:700}
+main{padding:16px 20px;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+input,select{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13px;background:#fff}
+input[type=search]{min-width:220px}
+.btn{border:1px solid var(--pri);background:var(--pri);color:#fff;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+.btn.ghost{background:#fff;color:var(--pri)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+th{background:#f0f3f8;position:sticky;top:0;cursor:pointer;white-space:nowrap;user-select:none}
+th.num,td.num{text-align:right}
+tr:hover td{background:#fafbfd}
+.tw{max-height:68vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.b-red{background:#fde8e6;color:var(--red)}.b-org{background:#fff3dc;color:var(--org)}.b-grn{background:#e3f4ea;color:var(--grn)}.b-gry{background:#eef0f3;color:#555}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}.kpi b{display:block;font-size:22px;margin-top:4px}.kpi span{color:var(--sub);font-size:12px}
+.sub{color:var(--sub);font-size:12px}
+.chart{display:flex;align-items:flex-end;gap:6px;height:180px;padding:8px 4px;border-bottom:1px solid var(--line)}
+.chart div{flex:1;background:var(--pri);border-radius:4px 4px 0 0;position:relative;min-width:18px;cursor:pointer}
+.chart div.sel{background:#e08a00}
+.chart div span{position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:11px;color:var(--sub)}
+.chart div em{position:absolute;top:-17px;left:-10px;right:-10px;text-align:center;font-size:10px;color:var(--ink);font-style:normal}
+.split{display:grid;grid-template-columns:380px 1fr;gap:14px}@media(max-width:900px){.split{grid-template-columns:1fr}}
+.list .row{padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.list .row:hover,.list .row.on{background:var(--pri2)}
+#login{position:fixed;inset:0;background:#0f2a55;display:flex;align-items:center;justify-content:center;z-index:9}
+#login .box{background:#fff;border-radius:16px;padding:28px;width:340px;text-align:center}
+#login input{width:100%;font-size:18px;text-align:center;letter-spacing:4px;margin:14px 0}
+.hide{display:none!important}
+.mini{font-size:12px;color:var(--sub);margin-top:6px}
+.pg{display:flex;gap:6px;align-items:center;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="login"><div class="box">
+<h2 style="margin:0 0 6px">SUMEX SCM</h2>
+<div class="sub">재고·출고 조회 (사내용)</div>
+<input id="pw" type="password" inputmode="numeric" placeholder="접속 코드" autocomplete="current-password">
+<button class="btn" style="width:100%" onclick="unlock()">열기</button>
+<label class="mini" style="display:block"><input type="checkbox" id="remember"> 이 기기에서 기억</label>
+<div id="lerr" class="mini" style="color:#c0362c"></div>
+</div></div>
+
+<header><h1>SUMEX SCM</h1><span class="sub" style="color:#c9d6ee">재고 · 출고 · 안전재고</span><span class="meta" id="meta"></span></header>
+<nav id="nav"></nav>
+<main id="app"></main>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js" async></script>
+<script>
+const ITER=600000;let D=null;
+const TABS=[['stock','재고'],['lines','출고 조회'],['hosp','병원별'],['date','일자별'],['ss','안전재고 예측']];
+const DEMAND_EXCL=new Set(['마감','수리','반품','기타']);
+const fmt=n=>(n==null||n==='')?'':Number(n).toLocaleString('ko-KR');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function derive(pw,salt){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:ITER,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['decrypt'])}
+async function unlock(pwArg){const pw=pwArg||document.getElementById('pw').value.trim();if(!pw)return;document.getElementById('lerr').textContent='여는 중...';
+try{const buf=new Uint8Array(await (await fetch('data.bin?v='+Date.now())).arrayBuffer());const salt=buf.slice(0,16),iv=buf.slice(16,28),ct=buf.slice(28);
+const key=await derive(pw,salt);const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+const ds=new DecompressionStream('gzip');const txt=await new Response(new Blob([pt]).stream().pipeThrough(ds)).text();D=JSON.parse(txt);
+if(document.getElementById('remember').checked||pwArg)localStorage.setItem('scm_k',pw);
+document.getElementById('login').classList.add('hide');init();}catch(e){document.getElementById('lerr').textContent='코드가 맞지 않습니다.';localStorage.removeItem('scm_k')}}
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});
+if(localStorage.getItem('scm_k'))unlock(localStorage.getItem('scm_k'));
+
+let cur='stock';const S={};
+function init(){
+  D.stockMap=Object.fromEntries(D.stock.map(s=>[s.c,s]));
+  D.lines.forEach(l=>{l.hn=(l.h||l.hr||l.cu||'(미기재)').trim();l.ym=l.d.slice(0,7)});
+  document.getElementById('meta').textContent=`재고 기준 ${D.stockAt} · 출고 ${D.from} ~ ${D.to} · 갱신 ${D.built.slice(0,10)}`;
+  document.getElementById('nav').innerHTML=TABS.map(([k,v])=>`<button data-k="${k}">${v}</button>`).join('');
+  document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.k));
+  computeSS();show('stock');
+}
+function show(k){cur=k;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));({stock:vStock,lines:vLines,hosp:vHosp,date:vDate,ss:vSS})[k]();}
+
+/* ---------- table helper ---------- */
+function table(id,cols,rows,opt={}){
+  const st=S[id]||(S[id]={sort:opt.sort||null,dir:opt.dir||-1,page:0});
+  if(st.sort!=null){const c=cols.find(c=>c.k===st.sort);if(c){const g=c.v||(r=>r[c.k]);rows=[...rows].sort((a,b)=>{const x=g(a),y=g(b);return (typeof x==='number'&&typeof y==='number'?x-y:String(x??'').localeCompare(String(y??''),'ko'))*st.dir})}}
+  const ps=opt.pageSize||300,pages=Math.max(1,Math.ceil(rows.length/ps));if(st.page>=pages)st.page=0;
+  const view=rows.slice(st.page*ps,(st.page+1)*ps);
+  const h=`<div class="tw"><table><thead><tr>${cols.map(c=>`<th class="${c.num?'num':''}" data-s="${c.k}">${c.t}${st.sort===c.k?(st.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${view.map(r=>`<tr ${opt.rowAttr?opt.rowAttr(r):''}>${cols.map(c=>`<td class="${c.num?'num':''}">${c.h?c.h(r):esc(c.num?fmt((c.v||(x=>x[c.k]))(r)):(c.v||(x=>x[c.k]))(r))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  <div class="pg sub">${rows.length.toLocaleString()}건${pages>1?` · <button class="btn ghost" data-p="-1">이전</button> ${st.page+1}/${pages} <button class="btn ghost" data-p="1">다음</button>`:''}</div>`;
+  setTimeout(()=>{const el=document.getElementById(id);if(!el)return;
+    el.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.s;if(st.sort===k)st.dir*=-1;else{st.sort=k;st.dir=-1}opt.rerender()});
+    el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{st.page=Math.min(pages-1,Math.max(0,st.page+Number(b.dataset.p)));opt.rerender()});
+    if(opt.onRow)el.querySelectorAll('tbody tr').forEach((tr,i)=>tr.onclick=()=>opt.onRow(view[i]));},0);
+  return `<div id="${id}">${h}</div>`;
+}
+function download(name,cols,rows){
+  const data=[cols.map(c=>c.t.replace(/<[^>]+>/g,''))].concat(rows.map(r=>cols.map(c=>{const v=(c.x||c.v||(x=>x[c.k]))(r);return v??''})));
+  if(window.XLSX){const ws=XLSX.utils.aoa_to_sheet(data);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'data');XLSX.writeFile(wb,name+'.xlsx');return}
+  const csv='\ufeff'+data.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=name+'.csv';a.click();
+}
+const today=()=>new Date().toISOString().slice(0,10).replace(/-/g,'');
+
+/* ---------- 재고 ---------- */
+function stockStatus(s){const p=SS[s.c];if(!p)return s.av>0?['정상','b-grn']:['재고 0','b-gry'];return [p.status,p.cls]}
+function vStock(){
+  const f=S.stockF||(S.stockF={q:'',g:'',only:''});
+  const groups=[...new Set(D.stock.map(s=>s.g))].sort();
+  let rows=D.stock.filter(s=>(!f.g||s.g===f.g)&&(!f.q||(s.c+' '+s.n).toLowerCase().includes(f.q.toLowerCase())));
+  if(f.only==='zero')rows=rows.filter(s=>s.av<=0);if(f.only==='risk')rows=rows.filter(s=>SS[s.c]&&SS[s.c].lvl<2);
+  const cols=[{k:'c',t:'품번'},{k:'n',t:'품명'},{k:'g',t:'구분'},{k:'tot',t:'총재고',num:1},{k:'al',t:'할당',num:1},{k:'av',t:'가용',num:1},{k:'ship',t:'입고예정',num:1},{k:'safe',t:'기준 안전재고',num:1},
+    {k:'m3',t:'월평균 출고(최근 3개월)',num:1,v:r=>SS[r.c]?SS[r.c].avg3:0},{k:'st',t:'상태',v:r=>stockStatus(r)[0],h:r=>{const [t,c]=stockStatus(r);return `<span class="badge ${c}">${t}</span>`}},{k:'pv',t:'단가(VAT)',num:1},{k:'pk',t:'포장'}];
+  const zero=D.stock.filter(s=>s.av<=0).length,risk=D.stock.filter(s=>SS[s.c]&&SS[s.c].lvl<2).length;
+  app.innerHTML=`<div class="kpis"><div class="kpi"><span>품목 수</span><b>${D.stock.length}</b></div><div class="kpi"><span>가용 0 품목</span><b>${zero}</b></div><div class="kpi"><span>발주 검토 필요</span><b>${risk}</b></div><div class="kpi"><span>재고 기준일</span><b style="font-size:16px">${D.stockAt}</b></div></div>
+  <div class="card"><div class="bar"><input type="search" id="q" placeholder="품번·품명 검색" value="${esc(f.q)}"><select id="g"><option value="">전체 구분</option>${groups.map(g=>`<option ${g===f.g?'selected':''}>${esc(g)}</option>`).join('')}</select>
+  <select id="o"><option value="">전체</option><option value="zero" ${f.only==='zero'?'selected':''}>가용 0만</option><option value="risk" ${f.only==='risk'?'selected':''}>발주 검토 필요만</option></select>
+  <button class="btn ghost" id="dl">엑셀 다운로드</button><span class="sub">재고 수량은 Stryker 재고 파일 기준이며 실사 수량이 아닙니다.</span></div>${table('tStock',cols,rows,{sort:'av',dir:1,rerender:vStock,onRow:r=>{S.lineF={q:r.c,t:'',h:'',from:'',to:''};show('lines')}})}<div class="mini">행을 누르면 해당 품번의 출고 내역으로 이동합니다.</div></div>`;
+  q.oninput=e=>{f.q=e.target.value;S.tStock&&(S.tStock.page=0);vStock();document.getElementById('q').focus();document.getElementById('q').setSelectionRange(99,99)};
+  g.onchange=e=>{f.g=e.target.value;vStock()};o.onchange=e=>{f.only=e.target.value;vStock()};dl.onclick=()=>download('SUMEX_SCM_재고_'+today(),cols,rows);
+}
+
+/* ---------- 출고 조회 ---------- */
+function filterLines(f){const q=(f.q||'').toLowerCase(),h=(f.h||'').toLowerCase();return D.lines.filter(l=>(!f.t||l.t===f.t)&&(!f.from||l.d>=f.from.replace(/-/g,'/'))&&(!f.to||l.d<=f.to.replace(/-/g,'/'))&&(!h||(l.hn+' '+l.cu+' '+l.hr).toLowerCase().includes(h))&&(!q||(l.c+' '+l.n+' '+l.rm+' '+l.no).toLowerCase().includes(q)))}
+const LCOLS=[{k:'d',t:'일자'},{k:'no',t:'주문서 No.'},{k:'hn',t:'병원'},{k:'cu',t:'거래처'},{k:'t',t:'구분'},{k:'c',t:'품번'},{k:'n',t:'품명'},{k:'q',t:'수량',num:1},{k:'amt',t:'금액',num:1},{k:'m',t:'담당'},{k:'rm',t:'적요'},{k:'st',t:'진행'}];
+function vLines(){
+  const f=S.lineF||(S.lineF={q:'',t:'',h:'',from:'',to:''});const types=[...new Set(D.lines.map(l=>l.t))];
+  const rows=filterLines(f);const sq=rows.reduce((a,l)=>a+(+l.q||0),0),sa=rows.reduce((a,l)=>a+(+l.amt||0),0);
+  app.innerHTML=`<div class="card"><div class="bar"><input type="search" id="q" placeholder="품번·품명·적요·주문서No." value="${esc(f.q)}"><input type="search" id="h" placeholder="병원·거래처" value="${esc(f.h)}">
+  <select id="t"><option value="">전체 구분</option>${types.map(t=>`<option ${t===f.t?'selected':''}>${esc(t)}</option>`).join('')}</select>
+  <input type="date" id="fr" value="${f.from}"> ~ <input type="date" id="to" value="${f.to}"><button class="btn ghost" id="rs">초기화</button><button class="btn ghost" id="dl">엑셀 다운로드</button></div>
+  <div class="sub" style="margin-bottom:8px">합계 수량 ${fmt(sq)} · 금액 ${fmt(sa)}원 (금액 0원은 선납·샘플 등 무상 출고)</div>${table('tLines',LCOLS,rows,{sort:'d',dir:-1,rerender:vLines})}</div>`;
+  const bind=(id,key)=>{document.getElementById(id).onchange=e=>{f[key]=e.target.value;S.tLines&&(S.tLines.page=0);vLines()}};
+  bind('q','q');bind('h','h');bind('t','t');bind('fr','from');bind('to','to');
+  rs.onclick=()=>{S.lineF={q:'',t:'',h:'',from:'',to:''};vLines()};dl.onclick=()=>download('SUMEX_SCM_출고_'+today(),LCOLS,rows);
+}
+
+/* ---------- 병원별 ---------- */
+function vHosp(){
+  const f=S.hF||(S.hF={q:'',sel:'',ex:true});
+  const agg={};D.lines.forEach(l=>{if(f.ex&&l.t==='마감')return;const a=agg[l.hn]||(agg[l.hn]={hn:l.hn,n:0,q:0,amt:0,last:'',cu:new Set()});a.n++;a.q+=+l.q||0;a.amt+=+l.amt||0;if(l.d>a.last)a.last=l.d;a.cu.add(l.cu)});
+  let list=Object.values(agg).filter(a=>!f.q||a.hn.toLowerCase().includes(f.q.toLowerCase())).sort((a,b)=>b.amt-a.amt||b.n-a.n);
+  const sel=f.sel&&agg[f.sel];let detail='<div class="sub">왼쪽에서 병원을 고르세요.</div>';
+  if(sel){const rows=D.lines.filter(l=>l.hn===f.sel&&!(f.ex&&l.t==='마감'));
+    const items={};rows.forEach(l=>{const it=items[l.c]||(items[l.c]={c:l.c,n:l.n,q:0,amt:0,cnt:0,last:''});it.q+=+l.q||0;it.amt+=+l.amt||0;it.cnt++;if(l.d>it.last)it.last=l.d});
+    const ICOLS=[{k:'c',t:'품번'},{k:'n',t:'품명'},{k:'cnt',t:'건수',num:1},{k:'q',t:'수량',num:1},{k:'amt',t:'금액',num:1},{k:'last',t:'최근 출고'}];
+    detail=`<h3 style="margin:0 0 4px">${esc(sel.hn)}</h3><div class="sub">거래처: ${esc([...sel.cu].join(', '))} · ${sel.n}건 · 수량 ${fmt(sel.q)} · 금액 ${fmt(sel.amt)}원 · 최근 ${sel.last}</div>
+    <div class="bar" style="margin-top:8px"><button class="btn ghost" id="dl1">품목 요약 엑셀</button><button class="btn ghost" id="dl2">출고 상세 엑셀</button></div>
+    <h4 style="margin:8px 0">품목별 요약</h4>${table('tHI',ICOLS,Object.values(items),{sort:'amt',dir:-1,rerender:vHosp,pageSize:200})}
+    <h4 style="margin:14px 0 8px">출고 상세</h4>${table('tHL',LCOLS.filter(c=>c.k!=='hn'),rows,{sort:'d',dir:-1,rerender:vHosp,pageSize:200})}`;
+    setTimeout(()=>{dl1.onclick=()=>download('SUMEX_SCM_'+sel.hn+'_품목_'+today(),ICOLS,Object.values(items));dl2.onclick=()=>download('SUMEX_SCM_'+sel.hn+'_출고_'+today(),LCOLS,rows)},0)}
+  app.innerHTML=`<div class="split"><div class="card"><div class="bar"><input type="search" id="q" placeholder="병원 검색" value="${esc(f.q)}" style="min-width:0;flex:1"></div>
+  <label class="mini"><input type="checkbox" id="ex" ${f.ex?'checked':''}> 월 마감 전표 제외 (이중 집계 방지)</label>
+  <div class="list" style="max-height:66vh;overflow:auto;margin-top:6px">${list.map(a=>`<div class="row ${a.hn===f.sel?'on':''}" data-h="${esc(a.hn)}"><span>${esc(a.hn)}<br><span class="sub">${a.n}건 · 최근 ${a.last}</span></span><span class="sub" style="text-align:right">${fmt(a.amt)}원</span></div>`).join('')}</div></div>
+  <div class="card">${detail}</div></div>`;
+  q.oninput=e=>{f.q=e.target.value;vHosp();const el=document.getElementById('q');el.focus();el.setSelectionRange(99,99)};ex.onchange=e=>{f.ex=e.target.checked;vHosp()};
+  document.querySelectorAll('.list .row').forEach(r=>r.onclick=()=>{f.sel=r.dataset.h;S.tHI=null;S.tHL=null;vHosp()});
+}
+
+/* ---------- 일자별 ---------- */
+function vDate(){
+  const f=S.dF||(S.dF={m:'',d:'',ex:true,metric:'amt'});
+  const months={};D.lines.forEach(l=>{if(f.ex&&l.t==='마감')return;const m=months[l.ym]||(months[l.ym]={ym:l.ym,n:0,q:0,amt:0});m.n++;m.q+=+l.q||0;m.amt+=+l.amt||0});
+  const ml=Object.values(months).sort((a,b)=>a.ym.localeCompare(b.ym));if(!f.m)f.m=ml[ml.length-1].ym;
+  const mx=Math.max(...ml.map(m=>m[f.metric]))||1;
+  const days={};D.lines.filter(l=>l.ym===f.m&&!(f.ex&&l.t==='마감')).forEach(l=>{const d=days[l.d]||(days[l.d]={d:l.d,n:0,q:0,amt:0,h:new Set()});d.n++;d.q+=+l.q||0;d.amt+=+l.amt||0;d.h.add(l.hn)});
+  const DCOLS=[{k:'d',t:'일자'},{k:'n',t:'출고 줄 수',num:1},{k:'q',t:'수량',num:1},{k:'amt',t:'금액',num:1},{k:'hc',t:'병원 수',num:1,v:r=>r.h.size},{k:'hl',t:'병원',v:r=>[...r.h].join(', ')}];
+  const dayRows=Object.values(days);
+  let dayDetail='';if(f.d){const rows=D.lines.filter(l=>l.d===f.d&&!(f.ex&&l.t==='마감'));dayDetail=`<div class="card"><h3 style="margin:0 0 8px">${f.d} 출고 상세</h3><div class="bar"><button class="btn ghost" id="dl2">엑셀 다운로드</button></div>${table('tDL',LCOLS,rows,{sort:'hn',dir:1,rerender:vDate})}</div>`;setTimeout(()=>{dl2.onclick=()=>download('SUMEX_SCM_'+f.d.replace(/\//g,'')+'_출고',LCOLS,rows)},0)}
+  app.innerHTML=`<div class="card"><div class="bar"><b>월별 출고</b><select id="mt"><option value="amt" ${f.metric==='amt'?'selected':''}>금액</option><option value="q" ${f.metric==='q'?'selected':''}>수량</option><option value="n" ${f.metric==='n'?'selected':''}>줄 수</option></select>
+  <label class="mini"><input type="checkbox" id="ex" ${f.ex?'checked':''}> 월 마감 전표 제외</label><span class="sub">막대를 누르면 그 달의 일자별 표가 나옵니다.</span></div>
+  <div class="chart">${ml.map(m=>`<div data-m="${m.ym}" class="${m.ym===f.m?'sel':''}" style="height:${Math.max(2,m[f.metric]/mx*100)}%" title="${m.ym} ${fmt(m[f.metric])}"><em>${f.metric==='amt'?Math.round(m.amt/1e6)+'M':fmt(m[f.metric])}</em><span>${m.ym.slice(5)}월</span></div>`).join('')}</div><div style="height:18px"></div></div>
+  <div class="card"><div class="bar"><b>${f.m} 일자별</b><button class="btn ghost" id="dl">엑셀 다운로드</button><span class="sub">행을 누르면 그날 출고 상세가 나옵니다.</span></div>${table('tD',DCOLS,dayRows,{sort:'d',dir:-1,rerender:vDate,onRow:r=>{f.d=r.d;S.tDL=null;vDate()}})}</div>${dayDetail}`;
+  document.querySelectorAll('.chart div').forEach(b=>b.onclick=()=>{f.m=b.dataset.m;f.d='';S.tD=null;vDate()});
+  mt.onchange=e=>{f.metric=e.target.value;vDate()};ex.onchange=e=>{f.ex=e.target.checked;vDate()};
+  dl.onclick=()=>download('SUMEX_SCM_'+f.m+'_일자별',DCOLS.map(c=>c.k==='hl'?{...c,x:r=>[...r.h].join(', ')}:c),dayRows);
+}
+
+/* ---------- 안전재고 예측 ---------- */
+let SS={};const P=JSON.parse(localStorage.getItem('scm_ssp')||'{"lt":1,"z":1.65,"win":6}');
+function computeSS(){
+  SS={};const all=[...new Set(D.lines.map(l=>l.ym))].sort();const last=all[all.length-1];
+  const full=all.filter(m=>m!==last);const win=full.slice(-P.win),win3=full.slice(-3);
+  const byC={};D.lines.forEach(l=>{if(DEMAND_EXCL.has(l.t)||!D.stockMap[l.c])return;const m=(byC[l.c]||(byC[l.c]={}));m[l.ym]=(m[l.ym]||0)+(+l.q||0)});
+  D.stock.forEach(s=>{const m=byC[s.c]||{};const xs=win.map(k=>m[k]||0);const n=xs.length||1;const avg=xs.reduce((a,b)=>a+b,0)/n;
+    const sd=Math.sqrt(xs.reduce((a,b)=>a+(b-avg)**2,0)/Math.max(1,n-1));const avg3=win3.map(k=>m[k]||0).reduce((a,b)=>a+b,0)/(win3.length||1);
+    const ss=Math.ceil(P.z*sd*Math.sqrt(P.lt));const rop=Math.ceil(avg*P.lt+ss);const cover=avg>0?s.av/avg:null;
+    let status='정상',cls='b-grn',lvl=2;if(avg===0&&s.av<=0){status='재고 0 (수요 없음)';cls='b-gry';lvl=3}else if(avg===0){status='수요 없음';cls='b-gry';lvl=3}else if(s.av<=ss){status='부족 위험';cls='b-red';lvl=0}else if(s.av<=rop){status='발주 필요';cls='b-org';lvl=1}
+    const mtd=m[last]||0;const need=Math.max(0,rop+Math.ceil(avg)-s.av-(s.ship||0));
+    SS[s.c]={avg:Math.round(avg*10)/10,avg3:Math.round(avg3*10)/10,sd:Math.round(sd*10)/10,ss,rop,cover,status,cls,lvl,mtd,need,hist:xs};});
+  SS._win=win;SS._last=last;
+}
+function vSS(){
+  const f=S.ssF||(S.ssF={q:'',only:'act'});
+  let rows=D.stock.filter(s=>(!f.q||(s.c+' '+s.n).toLowerCase().includes(f.q.toLowerCase())));
+  if(f.only==='act')rows=rows.filter(s=>SS[s.c].avg>0);if(f.only==='risk')rows=rows.filter(s=>SS[s.c].lvl<2);
+  const cols=[{k:'c',t:'품번'},{k:'n',t:'품명'},{k:'av',t:'가용',num:1},{k:'ship',t:'입고예정',num:1},{k:'avg',t:'월평균 출고',num:1,v:r=>SS[r.c].avg},{k:'sd',t:'표준편차',num:1,v:r=>SS[r.c].sd},
+    {k:'mtd',t:SS._last.slice(5)+'월 누적',num:1,v:r=>SS[r.c].mtd},{k:'ss',t:'안전재고(예측)',num:1,v:r=>SS[r.c].ss},{k:'rop',t:'발주점',num:1,v:r=>SS[r.c].rop},{k:'safe',t:'기준 안전재고',num:1},
+    {k:'cov',t:'재고 개월수',num:1,v:r=>SS[r.c].cover==null?'':Math.round(SS[r.c].cover*10)/10},{k:'need',t:'권장 발주량',num:1,v:r=>SS[r.c].lvl<2?SS[r.c].need:0},
+    {k:'st',t:'상태',v:r=>SS[r.c].lvl,x:r=>SS[r.c].status,h:r=>`<span class="badge ${SS[r.c].cls}">${SS[r.c].status}</span>`},{k:'hist',t:'월별 출고 ('+SS._win[0].slice(5)+'~'+SS._win[SS._win.length-1].slice(5)+')',v:r=>SS[r.c].hist.join(' · ')}];
+  const red=D.stock.filter(s=>SS[s.c].lvl===0).length,org=D.stock.filter(s=>SS[s.c].lvl===1).length;
+  app.innerHTML=`<div class="kpis"><div class="kpi"><span>부족 위험</span><b style="color:var(--red)">${red}</b></div><div class="kpi"><span>발주 필요</span><b style="color:var(--org)">${org}</b></div><div class="kpi"><span>분석 기간</span><b style="font-size:16px">${SS._win[0]} ~ ${SS._win[SS._win.length-1]}</b></div></div>
+  <div class="card"><div class="bar"><span>리드타임(개월)</span><input type="number" id="lt" step="0.25" min="0.25" value="${P.lt}" style="width:80px"><span>서비스 수준</span><select id="z">${[[1.28,'90%'],[1.65,'95%'],[2.05,'98%'],[2.33,'99%']].map(([v,t])=>`<option value="${v}" ${v==P.z?'selected':''}>${t}</option>`).join('')}</select>
+  <span>분석 개월</span><select id="w">${[3,6,9].map(v=>`<option ${v==P.win?'selected':''}>${v}</option>`).join('')}</select>
+  <input type="search" id="q" placeholder="품번·품명" value="${esc(f.q)}"><select id="o"><option value="act" ${f.only==='act'?'selected':''}>출고 있는 품목</option><option value="risk" ${f.only==='risk'?'selected':''}>부족·발주 필요만</option><option value="" ${f.only===''?'selected':''}>전체</option></select><button class="btn ghost" id="dl">엑셀 다운로드</button></div>
+  <div class="mini" style="margin-bottom:8px">계산식: 안전재고 = z × 월 출고 표준편차 × √리드타임, 발주점 = 월평균 출고 × 리드타임 + 안전재고, 권장 발주량 = 발주점 + 1개월분 − 가용 − 입고예정. 수요는 판매·선납·가납·교환·샘플·데모 출고 수량이며, 월 마감·수리·반품은 제외합니다. 진행 중인 달은 평균에서 빠집니다. 재고는 Stryker 재고 파일 기준이라 참고용입니다.</div>
+  ${table('tSS',cols,rows,{sort:'st',dir:1,rerender:vSS})}</div>`;
+  const re=()=>{localStorage.setItem('scm_ssp',JSON.stringify(P));computeSS();vSS()};
+  lt.onchange=e=>{P.lt=Math.max(.25,+e.target.value||1);re()};z.onchange=e=>{P.z=+e.target.value;re()};w.onchange=e=>{P.win=+e.target.value;re()};
+  q.onchange=e=>{f.q=e.target.value;vSS()};o.onchange=e=>{f.only=e.target.value;vSS()};dl.onclick=()=>download('SUMEX_SCM_안전재고_'+today(),cols,rows);
+}
+</script>
+</body>
+</html>
